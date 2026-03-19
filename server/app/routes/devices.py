@@ -4,6 +4,7 @@ import secrets
 from fastapi import APIRouter, Depends, HTTPException, Request
 from slowapi import Limiter
 from slowapi.util import get_remote_address
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import generate_api_key
@@ -28,6 +29,11 @@ async def register_device(
         raise HTTPException(status_code=503, detail="Registration not configured")
     if not secrets.compare_digest(req.secret, REGISTRATION_SECRET):
         raise HTTPException(status_code=403, detail="Invalid registration secret")
+
+    existing = await db.execute(select(Device).where(Device.name == req.name))
+    device = existing.scalar_one_or_none()
+    if device:
+        return device
 
     device = Device(name=req.name, api_key=generate_api_key())
     db.add(device)

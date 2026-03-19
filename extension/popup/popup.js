@@ -63,6 +63,8 @@ async function loadSettings() {
   if (data.apiKey) {
     apiKeyValue.textContent = data.apiKey;
     apiKeyDisplay.classList.remove("hidden");
+    registerBtn.disabled = true;
+    registerBtn.title = "Device already registered";
   }
 }
 
@@ -86,7 +88,10 @@ registerBtn.addEventListener("click", async () => {
     regSecretInput.value = "";
     apiKeyValue.textContent = result.api_key;
     apiKeyDisplay.classList.remove("hidden");
+    registerBtn.disabled = true;
+    registerBtn.title = "Device already registered";
     setSettingsStatus("Device registered successfully!", "success");
+    setTimeout(() => showSessions(), 1200);
   } catch (err) {
     setSettingsStatus(`Registration failed: ${err.message}`, "error");
   }

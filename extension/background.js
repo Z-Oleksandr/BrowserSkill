@@ -3,7 +3,6 @@ importScripts("lib/api.js");
 const api = new BrowserSkillAPI();
 const ALARM_NAME = "browserskill-save";
 const SAVE_COOLDOWN_MS = 5000;
-const FILTERED_PROTOCOLS = ["chrome://", "brave://", "chrome-extension://", "edge://"];
 
 // ---------------------------------------------------------------------------
 // Storage helpers (chrome.storage.session for transient state)
@@ -115,10 +114,7 @@ async function captureBrowserState(windowId) {
   }
 
   const tabs = (win.tabs || [])
-    .filter((t) => {
-      const url = t.pendingUrl || t.url || "";
-      return url && !FILTERED_PROTOCOLS.some((p) => url.startsWith(p));
-    })
+    .filter((t) => (t.pendingUrl || t.url || ""))
     .map((t) => {
       const url = t.pendingUrl || t.url || "";
       return {
@@ -173,6 +169,28 @@ async function captureBrowserState(windowId) {
 }
 
 // ---------------------------------------------------------------------------
+// Auto-restore with retry
+// ---------------------------------------------------------------------------
+
+async function tryAutoRestore() {
+  const data = await chrome.storage.local.get(["activeSessionId", "apiKey"]);
+  if (!data.activeSessionId || !data.apiKey) return false;
+
+  try {
+    const resp = await api.loadState(data.activeSessionId);
+    if (resp && resp.state) {
+      await restoreBrowserState(resp.state);
+      await chrome.storage.local.remove("pendingRestore");
+      return true;
+    }
+  } catch (err) {
+    console.warn("BrowserSkill: auto-restore failed, will retry on focus", err);
+    await chrome.storage.local.set({ pendingRestore: true });
+  }
+  return false;
+}
+
+// ---------------------------------------------------------------------------
 // Restore browser state
 // ---------------------------------------------------------------------------
 
@@ -206,7 +224,7 @@ async function restoreBrowserState(stateData) {
         });
       }
     } else {
-      const createOpts = { url: "about:blank", type: "normal" };
+      const createOpts = { type: "normal" };
       if (win.state === "normal") {
         Object.assign(createOpts, {
           left: win.left,
@@ -222,7 +240,6 @@ async function restoreBrowserState(stateData) {
     // Create all tabs (unpinned first, then pin individually)
     const sortedTabs = [...win.tabs].sort((a, b) => a.index - b.index);
     const createdTabs = [];
-    let activeTabId = null;
     const leftoverTabIds = [];
 
     // Get existing tabs in the window (the new-tab page we want to remove later)
@@ -242,21 +259,17 @@ async function restoreBrowserState(stateData) {
           url: tabData.url,
           pinned: tabData.pinned,
           active: false,
+          index: tabData.index,
         });
         createdTabs.push({ chromeTab: tab, data: tabData });
-        if (tabData.active) {
-          activeTabId = tab.id;
-        }
       } catch (err) {
         console.warn("BrowserSkill: failed to create tab", tabData.url, err);
       }
     }
 
-    // Remove leftover tabs (the original new-tab pages)
+    // Remove all leftover tabs (the original new-tab / about:blank pages)
     for (const id of leftoverTabIds) {
-      try {
-        await chrome.tabs.remove(id);
-      } catch { /* already closed */ }
+      try { await chrome.tabs.remove(id); } catch { /* already closed */ }
     }
 
     // Create tab groups
@@ -284,10 +297,19 @@ async function restoreBrowserState(stateData) {
       }
     }
 
-    // Activate the correct tab
-    if (activeTabId) {
-      await chrome.tabs.update(activeTabId, { active: true });
+    // Discard non-pinned tabs for lazy loading (load only when user clicks)
+    const discardIds = createdTabs
+      .filter((ct) => !ct.data.pinned)
+      .map((ct) => ct.chromeTab.id);
+    if (discardIds.length > 0) {
+      await new Promise((r) => setTimeout(r, 500));
+      for (const id of discardIds) {
+        try { await chrome.tabs.discard(id); } catch { /* ok */ }
+      }
     }
+
+    // Add a new-tab page at the end as the active tab
+    await chrome.tabs.create({ windowId: targetWindowId, active: true });
 
     // Set window state (maximized, fullscreen, etc.)
     if (win.state && win.state !== "normal") {
@@ -313,7 +335,10 @@ async function restoreBrowserState(stateData) {
 
 // Guard: only process events for the main window
 async function isMainWindow(windowId) {
-  const mainWinId = await getMainWindowId();
+  let mainWinId = await getMainWindowId();
+  if (mainWinId === null) {
+    mainWinId = await identifyMainWindow();
+  }
   return mainWinId !== null && windowId === mainWinId;
 }
 
@@ -391,22 +416,21 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
 // --- Startup: auto-restore ---
 
 chrome.runtime.onStartup.addListener(async () => {
-  const mainWinId = await identifyMainWindow();
-  if (!mainWinId) return;
+  await identifyMainWindow();
+  await tryAutoRestore();
+});
 
-  const sessionId = await getActiveSessionId();
-  if (!sessionId) return;
+// --- Fallback: retry restore on window focus ---
 
-  const config = await chrome.storage.local.get("apiKey");
-  if (!config.apiKey) return;
+chrome.windows.onFocusChanged.addListener(async (windowId) => {
+  if (windowId === chrome.windows.WINDOW_ID_NONE) return;
 
-  try {
-    const resp = await api.loadState(sessionId);
-    if (resp && resp.state) {
-      await restoreBrowserState(resp.state);
-    }
-  } catch (err) {
-    console.error("BrowserSkill: auto-restore failed", err);
+  const mainWinId = await getMainWindowId();
+  if (!mainWinId) await identifyMainWindow();
+
+  const { pendingRestore } = await chrome.storage.local.get("pendingRestore");
+  if (pendingRestore) {
+    await tryAutoRestore();
   }
 });
 
@@ -431,6 +455,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           const resp = await api.loadState(message.sessionId);
           if (resp && resp.state) {
             await restoreBrowserState(resp.state);
+            await chrome.storage.local.remove("pendingRestore");
             sendResponse({ success: true });
           } else {
             sendResponse({ success: false, error: "No state data" });
@@ -459,7 +484,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           break;
         }
         case "clearActiveSession": {
-          await chrome.storage.local.remove("activeSessionId");
+          await chrome.storage.local.remove(["activeSessionId", "pendingRestore"]);
           await chrome.alarms.clear(ALARM_NAME);
           sendResponse({ success: true });
           break;

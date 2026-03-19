@@ -194,7 +194,8 @@ body {
 
 /* Inputs */
 input[type="text"],
-input[type="url"] {
+input[type="url"],
+input[type="password"] {
   background: #16162a;
   border: 1px solid #2a2a4a;
   color: #e0e0e0;

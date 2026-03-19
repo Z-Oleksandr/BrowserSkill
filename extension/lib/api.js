@@ -2,6 +2,22 @@
  * BrowserSkill API client.
  * Works in both service worker (importScripts) and popup (<script> tag).
  */
+function friendlyStatus(status) {
+    const messages = {
+        400: "Bad request — check your input",
+        401: "Unauthorized — invalid or missing API key",
+        403: "Forbidden — access denied",
+        404: "Not found — check your server URL",
+        408: "Request timed out",
+        429: "Too many requests — try again later",
+        500: "Server error — something went wrong on the server",
+        502: "Bad gateway — server is down or unreachable",
+        503: "Service unavailable — server is starting up or overloaded",
+        504: "Gateway timeout — server took too long to respond",
+    };
+    return messages[status] || `Server returned error ${status}`;
+}
+
 self.BrowserSkillAPI = class BrowserSkillAPI {
     constructor() {
         this._config = null;
@@ -34,10 +50,32 @@ self.BrowserSkillAPI = class BrowserSkillAPI {
         if (config.apiKey) {
             headers["X-API-Key"] = config.apiKey;
         }
-        const resp = await fetch(url, { ...options, headers });
+
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 10000);
+
+        let resp;
+        try {
+            resp = await fetch(url, {
+                ...options,
+                headers,
+                signal: controller.signal,
+            });
+        } catch (err) {
+            if (err.name === "AbortError") {
+                throw new Error(
+                    "Request timed out — server not responding",
+                );
+            }
+            throw new Error(
+                "Cannot reach server — check the URL and your network",
+            );
+        } finally {
+            clearTimeout(timeout);
+        }
+
         if (!resp.ok) {
-            const text = await resp.text().catch(() => "");
-            throw new Error(`API ${resp.status}: ${text}`);
+            throw new Error(friendlyStatus(resp.status));
         }
         if (resp.status === 204) return null;
         return resp.json();

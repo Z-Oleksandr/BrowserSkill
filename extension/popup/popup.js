@@ -13,6 +13,7 @@ const newSessionName = document.getElementById("newSessionName");
 const createSessionBtn = document.getElementById("createSessionBtn");
 const serverUrlInput = document.getElementById("serverUrl");
 const deviceNameInput = document.getElementById("deviceName");
+const regSecretInput = document.getElementById("regSecret");
 const registerBtn = document.getElementById("registerBtn");
 const testBtn = document.getElementById("testBtn");
 const apiKeyDisplay = document.getElementById("apiKeyDisplay");
@@ -68,8 +69,9 @@ async function loadSettings() {
 registerBtn.addEventListener("click", async () => {
   const serverUrl = serverUrlInput.value.trim();
   const deviceName = deviceNameInput.value.trim();
-  if (!serverUrl || !deviceName) {
-    setSettingsStatus("Please fill in both fields", "error");
+  const regSecret = regSecretInput.value.trim();
+  if (!serverUrl || !deviceName || !regSecret) {
+    setSettingsStatus("Please fill in all fields", "error");
     return;
   }
 
@@ -78,9 +80,10 @@ registerBtn.addEventListener("click", async () => {
 
   try {
     setSettingsStatus("Registering...", "");
-    const result = await api.registerDevice(deviceName);
+    const result = await api.registerDevice(deviceName, regSecret);
     await chrome.storage.local.set({ apiKey: result.api_key, deviceId: result.id });
     api.clearConfigCache();
+    regSecretInput.value = "";
     apiKeyValue.textContent = result.api_key;
     apiKeyDisplay.classList.remove("hidden");
     setSettingsStatus("Device registered successfully!", "success");

@@ -1,6 +1,7 @@
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, FetchedValue, ForeignKey, String, Text, func, text
+from sqlalchemy import Boolean, DateTime, FetchedValue, ForeignKey, String, func, text
+from sqlalchemy.dialects.mysql import LONGTEXT
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -27,7 +28,7 @@ class Session(Base):
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     device_id: Mapped[int] = mapped_column(ForeignKey("bs_devices.id", ondelete="CASCADE"))
     name: Mapped[str] = mapped_column(String(255))
-    state_data: Mapped[str | None] = mapped_column(Text, default=None)
+    state_data: Mapped[str | None] = mapped_column(LONGTEXT, default=None)
     is_active: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(

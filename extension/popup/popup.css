@@ -257,6 +257,17 @@ input:focus {
   color: #ff6b6b;
 }
 
+/* Status indicator */
+.status-indicator {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.status-icon {
+  flex-shrink: 0;
+}
+
 /* Empty state */
 .empty-state {
   text-align: center;

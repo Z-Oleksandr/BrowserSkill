@@ -7,6 +7,7 @@ const toggleViewBtn = document.getElementById("toggleView");
 const gearIcon = document.getElementById("gearIcon");
 const listIcon = document.getElementById("listIcon");
 const sessionList = document.getElementById("sessionList");
+const statusIcon = document.getElementById("statusIcon");
 const statusText = document.getElementById("statusText");
 const saveNowBtn = document.getElementById("saveNowBtn");
 const newSessionName = document.getElementById("newSessionName");
@@ -127,7 +128,7 @@ function setSettingsStatus(msg, type) {
 async function loadSessions() {
   const data = await chrome.storage.local.get(["apiKey", "activeSessionId"]);
   if (!data.apiKey) {
-    statusText.textContent = "Not configured — open Settings";
+    setStatus("Not configured — open Settings", null);
     saveNowBtn.disabled = true;
     sessionList.innerHTML = '<div class="empty-state">Configure your server in Settings to get started.</div>';
     return;
@@ -136,17 +137,21 @@ async function loadSessions() {
   try {
     const bgStatus = await chrome.runtime.sendMessage({ action: "getStatus" });
     if (bgStatus.activeSessionId) {
-      statusText.textContent = bgStatus.isDirty ? "Unsaved changes" : "Synced";
+      if (bgStatus.isDirty) {
+        setStatus("Unsaved changes", "notSynced");
+      } else {
+        setStatus("Synced", "synced");
+      }
       saveNowBtn.disabled = false;
     } else {
-      statusText.textContent = "No active session";
+      setStatus("No active session", null);
       saveNowBtn.disabled = true;
     }
 
     const sessions = await api.listSessions();
     renderSessions(sessions, data.activeSessionId);
   } catch (err) {
-    statusText.textContent = "Error loading sessions";
+    setStatus("Error loading sessions", "notSynced");
     sessionList.innerHTML = `<div class="empty-state">${err.message}</div>`;
   }
 }
@@ -213,12 +218,12 @@ async function handleSessionAction(action, sessionId) {
         break;
       }
       case "restore": {
-        statusText.textContent = "Restoring...";
+        setStatus("Restoring...", null);
         await chrome.runtime.sendMessage({
           action: "restoreSession",
           sessionId,
         });
-        statusText.textContent = "Restored!";
+        setStatus("Restored!", "synced");
         break;
       }
       case "delete": {
@@ -234,7 +239,7 @@ async function handleSessionAction(action, sessionId) {
     }
     loadSessions();
   } catch (err) {
-    statusText.textContent = `Error: ${err.message}`;
+    setStatus(`Error: ${err.message}`, "notSynced");
   }
 }
 
@@ -244,12 +249,12 @@ async function handleSessionAction(action, sessionId) {
 
 saveNowBtn.addEventListener("click", async () => {
   saveNowBtn.disabled = true;
-  statusText.textContent = "Saving...";
+  setStatus("Saving...", null);
   try {
     await chrome.runtime.sendMessage({ action: "captureNow" });
-    statusText.textContent = "Saved!";
+    setStatus("Saved!", "synced");
   } catch (err) {
-    statusText.textContent = `Save failed: ${err.message}`;
+    setStatus(`Save failed: ${err.message}`, "notSynced");
   }
   saveNowBtn.disabled = false;
 });
@@ -272,13 +277,26 @@ async function createSession() {
     newSessionName.value = "";
     loadSessions();
   } catch (err) {
-    statusText.textContent = `Create failed: ${err.message}`;
+    setStatus(`Create failed: ${err.message}`, "notSynced");
   }
 }
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+function setStatus(text, icon) {
+  statusText.textContent = text;
+  if (icon === "synced") {
+    statusIcon.src = "../icons/synced.png";
+    statusIcon.classList.remove("hidden");
+  } else if (icon === "notSynced") {
+    statusIcon.src = "../icons/notSynced.png";
+    statusIcon.classList.remove("hidden");
+  } else {
+    statusIcon.classList.add("hidden");
+  }
+}
 
 function escapeHtml(str) {
   const div = document.createElement("div");

@@ -21,7 +21,10 @@ async function getMainWindowId() {
   return await getSessionVar("mainWindowId");
 }
 
+let _isRestoringSync = false;
+
 async function isRestoring() {
+  if (_isRestoringSync) return true;
   return (await getSessionVar("isRestoring")) === true;
 }
 
@@ -169,6 +172,52 @@ async function captureBrowserState(windowId) {
 }
 
 // ---------------------------------------------------------------------------
+// Wait for tabs to commit navigation, then discard for lazy loading
+// ---------------------------------------------------------------------------
+
+function waitForNavigationThenDiscard(tabIds, timeoutMs = 15000) {
+  if (tabIds.length === 0) return Promise.resolve();
+
+  return new Promise((resolve) => {
+    const pending = new Set(tabIds);
+
+    function onUpdated(tabId, changeInfo, tab) {
+      if (!pending.has(tabId)) return;
+      if (changeInfo.status !== "loading" && changeInfo.status !== "complete") return;
+
+      const url = tab.pendingUrl || tab.url || "";
+      if (url && url !== "about:blank") {
+        pending.delete(tabId);
+        try { chrome.tabs.discard(tabId); } catch { /* ok */ }
+        if (pending.size === 0) {
+          chrome.tabs.onUpdated.removeListener(onUpdated);
+          resolve();
+        }
+      }
+    }
+
+    chrome.tabs.onUpdated.addListener(onUpdated);
+
+    // Safety timeout: discard tabs that navigated, leave others to load
+    setTimeout(async () => {
+      if (pending.size === 0) return;
+      chrome.tabs.onUpdated.removeListener(onUpdated);
+      for (const id of pending) {
+        try {
+          const tab = await chrome.tabs.get(id);
+          const url = tab.pendingUrl || tab.url || "";
+          if (url && url !== "about:blank") {
+            try { chrome.tabs.discard(id); } catch { /* ok */ }
+          }
+          // If still about:blank, don't discard — let it finish loading
+        } catch { /* tab gone */ }
+      }
+      resolve();
+    }, timeoutMs);
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Auto-restore with retry
 // ---------------------------------------------------------------------------
 
@@ -200,6 +249,7 @@ async function restoreBrowserState(stateData) {
   const win = stateData.window;
   if (!win.tabs || win.tabs.length === 0) return;
 
+  _isRestoringSync = true;
   await setSessionVar({ isRestoring: true });
 
   try {
@@ -298,15 +348,12 @@ async function restoreBrowserState(stateData) {
     }
 
     // Discard non-pinned tabs for lazy loading (load only when user clicks)
+    // Wait for each tab to commit its navigation before discarding, to avoid
+    // freezing tabs at about:blank (race condition with async navigation).
     const discardIds = createdTabs
       .filter((ct) => !ct.data.pinned)
       .map((ct) => ct.chromeTab.id);
-    if (discardIds.length > 0) {
-      await new Promise((r) => setTimeout(r, 500));
-      for (const id of discardIds) {
-        try { await chrome.tabs.discard(id); } catch { /* ok */ }
-      }
-    }
+    await waitForNavigationThenDiscard(discardIds);
 
     // Add a new-tab page at the end as the active tab
     await chrome.tabs.create({ windowId: targetWindowId, active: true });
@@ -325,6 +372,7 @@ async function restoreBrowserState(stateData) {
       lastSaveTime: Date.now(),
     });
   } finally {
+    _isRestoringSync = false;
     await setSessionVar({ isRestoring: false });
   }
 }

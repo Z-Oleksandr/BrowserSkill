@@ -305,6 +305,15 @@ function escapeHtml(str) {
 }
 
 // ---------------------------------------------------------------------------
+// Flags link — extensions can't use chrome:// in href, open via API
+// ---------------------------------------------------------------------------
+
+document.getElementById("flagsLink").addEventListener("click", (e) => {
+  e.preventDefault();
+  chrome.tabs.create({ url: "chrome://flags/#tab-groups-save" });
+});
+
+// ---------------------------------------------------------------------------
 // Init
 // ---------------------------------------------------------------------------
 

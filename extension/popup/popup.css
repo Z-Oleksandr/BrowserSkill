@@ -275,6 +275,50 @@ input:focus {
   color: #606070;
 }
 
+/* Setup tip */
+.setup-tip {
+  margin-top: 16px;
+  padding: 12px;
+  background: #16162a;
+  border: 1px solid #2a2a4a;
+  border-radius: 8px;
+  font-size: 11px;
+  color: #808090;
+  line-height: 1.5;
+}
+
+.setup-tip-title {
+  font-size: 11px;
+  font-weight: 600;
+  color: #e0e0e0;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 6px;
+}
+
+.setup-tip ol {
+  margin: 8px 0 0 16px;
+  padding: 0;
+}
+
+.setup-tip li {
+  margin-bottom: 2px;
+}
+
+.setup-tip a {
+  color: #00d4aa;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.setup-tip a:hover {
+  text-decoration: underline;
+}
+
+.setup-tip strong {
+  color: #e0e0e0;
+}
+
 /* Scrollbar */
 ::-webkit-scrollbar {
   width: 6px;

@@ -1,27 +1,22 @@
 {
-  "manifest_version": 3,
-  "name": "BrowserSkill",
-  "version": "1.2.0",
-  "description": "Persist browser tab and group state across restarts and devices",
-  "permissions": [
-    "tabs",
-    "tabGroups",
-    "storage",
-    "alarms"
-  ],
-  "host_permissions": [
-    "http://localhost:8008/*",
-    "http://127.0.0.1:8008/*",
-    "https://browserskill.sbmedia.dev/*"
-  ],
-  "background": {
-    "service_worker": "background.js"
-  },
-  "action": {
-    "default_popup": "popup/popup.html",
-    "default_icon": "icons/AppIcon.png"
-  },
-  "icons": {
-    "128": "icons/AppIcon.png"
-  }
+    "manifest_version": 3,
+    "name": "BrowserSkill",
+    "version": "1.2.0",
+    "description": "Persist browser tab and group state across restarts and devices",
+    "permissions": ["tabs", "tabGroups", "storage", "alarms"],
+    "host_permissions": [
+        "http://localhost:8008/*",
+        "http://127.0.0.1:8008/*",
+        "https://browserskill.sbmedia.dev/*"
+    ],
+    "background": {
+        "service_worker": "background.js"
+    },
+    "action": {
+        "default_popup": "popup/popup.html",
+        "default_icon": "icons/AppIcon.png"
+    },
+    "icons": {
+        "128": "icons/AppIcon.png"
+    }
 }

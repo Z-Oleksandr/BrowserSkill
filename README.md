@@ -45,3 +45,4 @@ The API starts on the port defined in `.env` (default `8000`).
 4. Register a device name and API key using your registration secret
 
 Your tabs will now auto-save and can be restored from any connected device.
+

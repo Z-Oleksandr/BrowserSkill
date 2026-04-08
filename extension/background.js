@@ -228,8 +228,8 @@ async function tryAutoRestore() {
   try {
     const resp = await api.loadState(data.activeSessionId);
     if (resp && resp.state) {
-      await restoreBrowserState(resp.state);
       await chrome.storage.local.remove("pendingRestore");
+      await restoreBrowserState(resp.state);
       return true;
     }
   } catch (err) {
@@ -244,6 +244,7 @@ async function tryAutoRestore() {
 // ---------------------------------------------------------------------------
 
 async function restoreBrowserState(stateData) {
+  if (_isRestoringSync) return;
   if (!stateData || !stateData.window) return;
 
   const win = stateData.window;
@@ -262,29 +263,18 @@ async function restoreBrowserState(stateData) {
       (w) => w.tabs.length === 1 && NEW_TAB_URLS.includes(w.tabs[0].url)
     );
 
-    if (reuseWindow) {
-      targetWindowId = reuseWindow.id;
-      // Update window geometry if state was not maximized
-      if (win.state === "normal") {
-        await chrome.windows.update(targetWindowId, {
-          left: win.left,
-          top: win.top,
-          width: win.width,
-          height: win.height,
-        });
-      }
-    } else {
-      const createOpts = { type: "normal" };
-      if (win.state === "normal") {
-        Object.assign(createOpts, {
-          left: win.left,
-          top: win.top,
-          width: win.width,
-          height: win.height,
-        });
-      }
-      const newWin = await chrome.windows.create(createOpts);
-      targetWindowId = newWin.id;
+    // Prefer a single-new-tab window, otherwise use any existing window
+    const reusable = reuseWindow || existingWindows[0];
+    if (!reusable) return; // no windows at all — nothing to restore into
+    targetWindowId = reusable.id;
+
+    if (win.state === "normal") {
+      await chrome.windows.update(targetWindowId, {
+        left: win.left,
+        top: win.top,
+        width: win.width,
+        height: win.height,
+      });
     }
 
     // Create all tabs (unpinned first, then pin individually)
@@ -472,6 +462,7 @@ chrome.runtime.onStartup.addListener(async () => {
 
 chrome.windows.onFocusChanged.addListener(async (windowId) => {
   if (windowId === chrome.windows.WINDOW_ID_NONE) return;
+  if (await isRestoring()) return;
 
   const mainWinId = await getMainWindowId();
   if (!mainWinId) await identifyMainWindow();
